@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Secret
+metadata: 
+    name: mysql-secret
+type: Opaque
+data:
+    ROOT_PASSWORD: cGFzc3dvcmQ=     #Decoded string: password 
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-stateful-volume
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 2Gi
+  hostPath:
+    path: /data
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-stateful
+  labels:
+    name: mysql-stateful
+spec:
+  # https://github.com/kubernetes/kubernetes/issues/69608
+  serviceName: mysql-stateful-service
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mysql-stateful
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-stateful-volume-claim
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        volumeMode: Filesystem
+        resources:
+          requests:
+            storage: 1Gi
+  template:
+    metadata:
+      name: mysql-stateful
+      labels:
+        name: mysql-stateful
+    spec:
+      containers:
+        - name: mysql-stateful
+          image: mysql:5.6
+          ports:
+            - containerPort: 3306
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: 
+                secretKeyRef: 
+                  key: ROOT_PASSWORD
+                  name: mysql-secret
+          volumeMounts:
+            - mountPath: /app/data
+              name: mysql-stateful-volume-claim
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-stateful-service
+spec:
+  selector:
+    name: mysql-stateful
+  ports:
+    - port: 3306
+      targetPort: 3306
+  clusterIP: None
